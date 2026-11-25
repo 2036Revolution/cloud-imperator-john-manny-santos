@@ -5,5 +5,22 @@ CREATE TABLE IF NOT EXISTS builds (
   expires_at INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_builds_expires_at
-ON builds(expires_at);
+CREATE INDEX IF NOT EXISTS idx_builds_expires_at ON builds(expires_at);
+
+CREATE TABLE IF NOT EXISTS membership_cache (
+  user_id TEXT PRIMARY KEY,
+  is_member INTEGER NOT NULL CHECK (is_member IN (0, 1)),
+  checked_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket TEXT PRIMARY KEY,
+  request_count INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS request_nonces (
+  nonce TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_request_nonces_expires_at ON request_nonces(expires_at);
