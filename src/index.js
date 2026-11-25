@@ -56,6 +56,13 @@ async function enforceRateLimit(env, key, limit, now) {
     "ON CONFLICT(bucket) DO UPDATE SET request_count = request_count + 1 " +
     "RETURNING request_count"
   ).bind(bucket).first();
+
+  // Keep only the current and immediately previous minute of rate-limit buckets.
+  await env.DB.prepare("DELETE FROM rate_limits WHERE bucket NOT LIKE ?")
+    .bind(`%:${minute}`).run();
+  await env.DB.prepare("DELETE FROM rate_limits WHERE bucket NOT LIKE ?")
+    .bind(`%:${minute - 1}`).run();
+
   return Number(row?.request_count || 0) <= limit;
 }
 
@@ -90,6 +97,8 @@ async function authorize(request, env) {
       return { response: json({ error: "Too many requests. Please wait a minute." }, 429) };
     }
 
+    // Remove expired one-time nonces so this table cannot grow indefinitely.
+    await env.DB.prepare("DELETE FROM request_nonces WHERE expires_at <= ?").bind(now).run();
     const nonceResult = await env.DB.prepare(
       "INSERT OR IGNORE INTO request_nonces (nonce, expires_at) VALUES (?, ?)"
     ).bind(nonce, now + TIMESTAMP_TOLERANCE_SECONDS * 2).run();
