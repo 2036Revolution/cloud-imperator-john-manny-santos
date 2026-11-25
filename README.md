@@ -1,3 +1,5 @@
+(AI-GENERATED. TESTED AND THIS IS NOT AN ENCOURAGEMENT OF AI-SLOP! THANKS, BUILDVERSE!)
+
 # Independent F3X Import / Export
 
 A community project for storing F3X build data behind a small HTTP API. The source code lives in this GitHub repository; the API is designed to run on **Cloudflare Workers + D1**.
