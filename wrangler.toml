@@ -5,4 +5,4 @@ compatibility_date = "2026-11-24"
 [[d1_databases]]
 binding = "DB"
 database_name = "f3x-builds"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "90393fed-2f5d-49a1-9e5b-179636e72519"
