@@ -7,9 +7,8 @@ A community project for importing and exporting F3X-compatible build data throug
 - `src/index.js` — API for saving and retrieving JSON build payloads.
 - `schema.sql` — database schema for builds, membership cache, rate limits, nonces, and export cooldowns.
 - `wrangler.toml` — Worker and D1 binding configuration.
-- `IndependentF3XImportExport.rbxm` — combined Roblox Studio plugin based on the user-provided original import plugin, with an added Export action.
 
-The combined plugin keeps the original import serialization formats (V1/V2/V3) and uses the original V3 format for newly exported builds so that the original importer can read them. MeshParts are converted to Part + SpecialMesh for compatibility; some Roblox-only instance types and visual features outside the original serializer's supported set are not exported.
+A combined Roblox Studio plugin has been prepared separately from the original user-provided import plugin. It keeps the original import serialization formats (V1/V2/V3) and uses the original V3 format for newly exported builds so that the original importer can read them. MeshParts are converted to Part + SpecialMesh for compatibility; some Roblox-only instance types and visual features outside the original serializer's supported set are not exported. The plugin artifact is not checked into this repository yet because its API URL still needs to be configured.
 
 ## API
 
