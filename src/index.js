@@ -58,10 +58,8 @@ async function enforceRateLimit(env, key, limit, now) {
   ).bind(bucket).first();
 
   // Keep only the current and immediately previous minute of rate-limit buckets.
-  await env.DB.prepare("DELETE FROM rate_limits WHERE bucket NOT LIKE ?")
-    .bind(`%:${minute}`).run();
-  await env.DB.prepare("DELETE FROM rate_limits WHERE bucket NOT LIKE ?")
-    .bind(`%:${minute - 1}`).run();
+  await env.DB.prepare("DELETE FROM rate_limits WHERE bucket NOT LIKE ? AND bucket NOT LIKE ?")
+    .bind(`%:${minute}`, `%:${minute - 1}`).run();
 
   return Number(row?.request_count || 0) <= limit;
 }
