@@ -1,5 +1,6 @@
-(AI-GENERATED. TESTED AND THIS IS NOT AN ENCOURAGEMENT OF AI-SLOP! THANKS, BUILDVERSE!)
 # Independent F3X Import / Export
+
+> **Development disclosure:** This project was developed with substantial assistance from AI tools using an AI-assisted approach often called “vibe-coding.” The project direction, requirements, and decisions are human-directed. AI assistance is not a security audit, and the project should not be assumed bug-free or production-hardened.
 
 A community project for importing and exporting F3X-compatible build data through a dedicated Cloudflare Worker and D1 database.
 
@@ -8,8 +9,9 @@ A community project for importing and exporting F3X-compatible build data throug
 - `src/index.js` — API for saving and retrieving JSON build payloads.
 - `schema.sql` — database schema for builds, membership cache, rate limits, nonces, and export cooldowns.
 - `wrangler.toml` — Worker and D1 binding configuration.
+- `index.html` — public project information and development disclosure.
 
-A combined Roblox Studio plugin has been prepared separately from the original user-provided import plugin. It keeps the original import serialization formats (V1/V2/V3) and uses the original V3 format for newly exported builds so that the original importer can read them. MeshParts are converted to Part + SpecialMesh for compatibility; some Roblox-only instance types and visual features outside the original serializer's supported set are not exported. The plugin artifact is not checked into this repository yet because its API URL still needs to be configured.
+A combined Roblox Studio plugin is being developed separately. The intended approach is to retain the original import plugin's serialization formats and build an independent compatible export path. MeshParts and other instance types require compatibility handling; some Roblox-only properties and features may not survive serialization. No finished, tested combined plugin is being distributed from this repository at this time.
 
 ## API
 
@@ -30,7 +32,7 @@ All API build operations require the plugin-supplied Roblox UserId, a fresh time
 
 ### Export abuse controls
 
-- The plugin disables its Export button for one second after a click.
+- The plugin is intended to disable its Export button for one second after a click.
 - The API independently enforces a one-second per-user export cooldown.
 - Repeated rapid export attempts trigger a 20-second server-side pause.
 - Additional limits are 12 authenticated requests per user per minute and 30 per source IP per minute.
@@ -40,12 +42,8 @@ All API build operations require the plugin-supplied Roblox UserId, a fresh time
 
 The API verifies that the submitted UserId belongs to the required group, but a UserId supplied by a client plugin is not cryptographic proof of identity. A modified client could forge the header. Timestamp freshness, nonces, group checks, and rate limits reduce casual abuse and replay, but they do not provide the same guarantee as a server-signed identity token. Do not put Cloudflare account tokens or database credentials in the plugin.
 
-## Deployment status
+## Deployment notes
 
-- Dedicated Cloudflare D1 database: created and migrated.
-- Worker: deployed with the D1 binding.
-- Public `workers.dev` API subdomain: not configured yet. The public website will remain on GitHub Pages; the Worker URL is only the plugin's API endpoint.
-- GitHub Pages: not enabled yet.
-- The combined RBXM currently contains an API URL placeholder. Replace it with the Worker API URL after the public API subdomain is selected.
+The public information site is intended to be hosted with GitHub Pages. The API is a separate Cloudflare Worker endpoint. A configured Worker subdomain does not by itself prove that every API route is reachable or that end-to-end plugin requests have been tested; those checks must be performed separately.
 
 This is an independent community project and is not affiliated with or endorsed by Roblox or the F3X creators.
