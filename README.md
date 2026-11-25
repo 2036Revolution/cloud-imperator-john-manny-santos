@@ -40,3 +40,12 @@ This initial API is intentionally a small prototype. Anyone who discovers the pu
 ## Next step
 
 The Roblox plugin still needs to be connected to these endpoints. That requires inspecting and adapting verified plugin source; it is not included or claimed to be complete here.
+
+## Deployment status
+
+- The dedicated Cloudflare D1 database has been created and its schema applied.
+- The Worker `independent-f3x-api` has been uploaded with the D1 binding.
+- The Worker does not yet have a public `workers.dev` address. Choose and configure the account's workers.dev subdomain before publishing the API URL.
+- `index.html` is the first companion-page draft. GitHub Pages still needs to be enabled in the repository settings, and its API address must be filled in after the Worker URL is known.
+
+The website and Roblox plugin are separate pieces: this page currently retrieves a build as JSON; the Roblox F3X plugin integration is still being developed.
