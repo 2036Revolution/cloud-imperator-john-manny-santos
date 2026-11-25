@@ -1,3 +1,4 @@
+(AI-GENERATED. TESTED AND THIS IS NOT AN ENCOURAGEMENT OF AI-SLOP! THANKS, BUILDVERSE!)
 # Independent F3X Import / Export
 
 A community project for importing and exporting F3X-compatible build data through a dedicated Cloudflare Worker and D1 database.
