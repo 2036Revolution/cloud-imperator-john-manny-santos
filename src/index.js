@@ -152,17 +152,16 @@ async function enforceExportCooldown(env, userId) {
     "rapid_count = CASE WHEN excluded.last_attempt_ms - export_guard.last_attempt_ms < 5000 THEN export_guard.rapid_count + 1 ELSE 0 END, " +
     "blocked_until_ms = CASE WHEN export_guard.blocked_until_ms > excluded.last_attempt_ms THEN export_guard.blocked_until_ms " +
     "WHEN excluded.last_attempt_ms - export_guard.last_attempt_ms < 5000 AND export_guard.rapid_count >= 2 THEN excluded.last_attempt_ms + 20000 ELSE 0 END, " +
+    "cooldown_until_ms = CASE WHEN excluded.last_attempt_ms - export_guard.last_attempt_ms < 1000 THEN export_guard.last_attempt_ms + 1000 ELSE 0 END, " +
     "last_attempt_ms = excluded.last_attempt_ms " +
-    "RETURNING last_attempt_ms, rapid_count, blocked_until_ms"
+    "RETURNING rapid_count, blocked_until_ms, cooldown_until_ms"
   ).bind(userId, now).first();
 
   if (Number(row?.blocked_until_ms || 0) > now) {
     return { blocked: true, retryAfter: Math.ceil((Number(row.blocked_until_ms) - now) / 1000) };
   }
-  const delta = now - Number(row?.last_attempt_ms || now);
-  // The first attempt is allowed. Repeated attempts inside the one-second window are rejected.
-  if (Number(row?.rapid_count || 0) > 0 && delta < 1000) {
-    return { blocked: false, cooldown: true, retryAfter: 1 };
+  if (Number(row?.cooldown_until_ms || 0) > now) {
+    return { blocked: false, cooldown: true, retryAfter: Math.ceil((Number(row.cooldown_until_ms) - now) / 1000) };
   }
   return { blocked: false, cooldown: false };
 }
