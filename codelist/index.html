@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="theme-color" content="#101522">
+  <title>Private Build Code List</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:#0d1220;color:#eef2ff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 12% 0%,#202e4d 0,transparent 42%),#0d1220}
+    main{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:42px 0 64px}
+    h1{font-size:clamp(28px,5vw,42px);letter-spacing:-.04em;margin:0 0 8px}
+    h2{font-size:18px;margin:0 0 16px}p{color:#aebbd2;line-height:1.6}
+    .muted{color:#8292ad;font-size:13px}.panel{padding:22px;border:1px solid #2a3852;border-radius:16px;background:#151e30;margin-top:18px}
+    input{width:100%;padding:13px 14px;border:1px solid #40516f;border-radius:10px;background:#0d1525;color:#eef2ff;font:inherit}
+    button{border:0;border-radius:10px;padding:11px 15px;background:#8db4ff;color:#101522;font-weight:700;font:inherit;cursor:pointer}
+    button.secondary{background:#273650;color:#dce7ff}button:disabled{opacity:.5;cursor:wait}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row input{flex:1;min-width:200px}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}
+    .stat{padding:16px;border:1px solid #2a3852;border-radius:14px;background:#151e30;min-width:0}
+    .stat span{display:block;color:#93a5c2;font-size:12px;margin-bottom:8px}.stat strong{font-size:22px;overflow-wrap:anywhere}
+    .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px}
+    th,td{text-align:left;padding:13px 12px;border-bottom:1px solid #293750;font-size:13px;white-space:nowrap}
+    th{color:#91a4c3;font-weight:600}td{color:#dbe5f7}td.code{font-weight:800;letter-spacing:.08em}
+    .error{color:#ff9d9d;min-height:22px}.hidden{display:none!important}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    pre{white-space:pre;overflow:auto;max-height:65vh;padding:16px;border-radius:10px;background:#090f1b;border:1px solid #293750;color:#d9e5ff;font-size:12px}
+    .foot{margin-top:22px;color:#71809a;font-size:12px}
+    @media(max-width:760px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding-top:28px}.panel{padding:17px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="toolbar">
+    <div>
+      <h1>Build code history</h1>
+      <p class="muted">Private administration page · Independent F3X Build Storage</p>
+    </div>
+    <button id="logout" class="secondary hidden" type="button">Sign out</button>
+  </div>
+
+  <section id="loginPanel" class="panel">
+    <h2>Administrator sign-in</h2>
+    <p>Sign in to view stored build records and storage statistics.</p>
+    <form id="loginForm">
+      <div class="row">
+        <input id="password" type="password" autocomplete="current-password" placeholder="Administrator password" required>
+        <button id="loginButton" type="submit">Sign in</button>
+      </div>
+    </form>
+    <p id="loginError" class="error" role="alert"></p>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="stats">
+      <div class="stat"><span>Stored builds</span><strong id="totalBuilds">—</strong></div>
+      <div class="stat"><span>Build JSON size</span><strong id="payloadBytes">—</strong></div>
+      <div class="stat"><span>Average build</span><strong id="averageBytes">—</strong></div>
+      <div class="stat"><span>Largest build</span><strong id="largestBytes">—</strong></div>
+    </div>
+
+    <section class="panel">
+      <div class="toolbar">
+        <div><h2>Stored exports</h2><p class="muted">Newest exports first. Dates are shown in your browser's local time.</p></div>
+        <button id="refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p id="loadError" class="error" role="alert"></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Created</th><th>Last accessed</th><th>Roblox User ID</th><th>JSON size</th><th></th></tr></thead>
+          <tbody id="buildRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="toolbar" style="margin-top:16px">
+        <span id="pageInfo" class="muted"></span>
+        <div class="row">
+          <button id="previous" class="secondary" type="button">Previous</button>
+          <button id="next" class="secondary" type="button">Next</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="rawPanel" class="panel hidden">
+      <div class="toolbar"><h2 id="rawTitle">Raw JSON</h2><button id="closeRaw" class="secondary" type="button">Close</button></div>
+      <pre id="rawContent"></pre>
+    </section>
+    <p id="storageNote" class="muted"></p>
+  </section>
+
+  <div class="foot">This page is not linked from the public homepage. Access is enforced by the API, not by the page's URL being secret.</div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const API = "https://independent-f3x-api.quincianf3x.workers.dev";
+  const TOKEN_KEY = "f3x-codelist-session";
+  const PAGE_SIZE = 50;
+  let token = sessionStorage.getItem(TOKEN_KEY) || "";
+  let offset = 0;
+  let total = 0;
+
+  const $ = id => document.getElementById(id);
+  const loginPanel = $("loginPanel");
+  const dashboard = $("dashboard");
+  const logoutButton = $("logout");
+
+  function formatBytes(value) {
+    const bytes = Number(value) || 0;
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  }
+
+  function formatDate(value) {
+    const seconds = Number(value);
+    if (!seconds) return "Never";
+    const date = new Date(seconds * 1000);
+    return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+  }
+
+  async function api(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    if (token) headers.Authorization = "Bearer " + token;
+    if (options.body) headers["Content-Type"] = "application/json";
+    const response = await fetch(API + path, Object.assign({}, options, { headers, cache: "no-store" }));
+    let data = {};
+    try { data = await response.json(); } catch {}
+    if (!response.ok) {
+      if (response.status === 401) signOut();
+      throw new Error(data.error || "Request failed (" + response.status + ").");
+    }
+    return data;
+  }
+
+  function showDashboard() {
+    loginPanel.classList.add("hidden");
+    dashboard.classList.remove("hidden");
+    logoutButton.classList.remove("hidden");
+  }
+
+  function signOut() {
+    token = "";
+    sessionStorage.removeItem(TOKEN_KEY);
+    dashboard.classList.add("hidden");
+    logoutButton.classList.add("hidden");
+    loginPanel.classList.remove("hidden");
+    $("password").value = "";
+    $("loginError").textContent = "";
+    $("rawPanel").classList.add("hidden");
+  }
+
+  async function loadHistory() {
+    $("loadError").textContent = "";
+    $("buildRows").innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
+    try {
+      const data = await api("/admin/history?limit=" + PAGE_SIZE + "&offset=" + offset);
+      const stats = data.stats || {};
+      total = Number(data.pagination?.total || 0);
+      $("totalBuilds").textContent = Number(stats.totalBuilds || 0).toLocaleString();
+      $("payloadBytes").textContent = formatBytes(stats.payloadBytes);
+      $("averageBytes").textContent = formatBytes(stats.averageBytes);
+      $("largestBytes").textContent = formatBytes(stats.largestBytes);
+      $("storageNote").textContent = data.note || "";
+      $("pageInfo").textContent = total ? "Showing " + (offset + 1) + "–" + Math.min(offset + PAGE_SIZE, total) + " of " + total : "No builds stored";
+      $("previous").disabled = offset <= 0;
+      $("next").disabled = offset + PAGE_SIZE >= total;
+
+      const rows = Array.isArray(data.items) ? data.items : [];
+      $("buildRows").replaceChildren();
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 6;
+        td.className = "muted";
+        td.textContent = "No builds found.";
+        tr.appendChild(td);
+        $("buildRows").appendChild(tr);
+      }
+
+      for (const item of rows) {
+        const tr = document.createElement("tr");
+        const values = [
+          ["code", item.code || "—"],
+          ["", formatDate(item.created_at)],
+          ["", formatDate(item.last_accessed)],
+          ["", item.roblox_user_id == null ? "—" : String(item.roblox_user_id)],
+          ["", formatBytes(item.payload_bytes)]
+        ];
+        for (const [className, value] of values) {
+          const td = document.createElement("td");
+          td.className = className;
+          td.textContent = value;
+          tr.appendChild(td);
+        }
+        const actionCell = document.createElement("td");
+        if (String(item.code || "").toUpperCase() === "BVBV") {
+          const view = document.createElement("button");
+          view.type = "button";
+          view.className = "secondary";
+          view.textContent = "View JSON";
+          view.addEventListener("click", () => viewRaw("BVBV"));
+          actionCell.appendChild(view);
+        } else {
+          actionCell.textContent = "—";
+        }
+        tr.appendChild(actionCell);
+        $("buildRows").appendChild(tr);
+      }
+    } catch (error) {
+      $("loadError").textContent = error.message;
+      $("buildRows").innerHTML = '<tr><td colspan="6" class="muted">Could not load build history.</td></tr>';
+    }
+  }
+
+  async function viewRaw(code) {
+    $("rawContent").textContent = "Loading…";
+    $("rawTitle").textContent = "Raw JSON · " + code;
+    $("rawPanel").classList.remove("hidden");
+    try {
+      const data = await api("/admin/builds/" + encodeURIComponent(code) + "/raw");
+      $("rawContent").textContent = JSON.stringify(data.payload, null, 2);
+    } catch (error) {
+      $("rawContent").textContent = error.message;
+    }
+  }
+
+  $("loginForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    $("loginError").textContent = "";
+    $("loginButton").disabled = true;
+    try {
+      const response = await fetch(API + "/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: $("password").value }),
+        cache: "no-store"
+      });
+      const data = await response.json();
+      if (!response.ok || !data.token) throw new Error(data.error || "Sign-in failed.");
+      token = data.token;
+      sessionStorage.setItem(TOKEN_KEY, token);
+      offset = 0;
+      showDashboard();
+      await loadHistory();
+    } catch (error) {
+      $("loginError").textContent = error.message;
+    } finally {
+      $("loginButton").disabled = false;
+    }
+  });
+
+  $("logout").addEventListener("click", signOut);
+  $("refresh").addEventListener("click", loadHistory);
+  $("previous").addEventListener("click", () => { offset = Math.max(0, offset - PAGE_SIZE); loadHistory(); });
+  $("next").addEventListener("click", () => { if (offset + PAGE_SIZE < total) { offset += PAGE_SIZE; loadHistory(); } });
+  $("closeRaw").addEventListener("click", () => $("rawPanel").classList.add("hidden"));
+
+  if (token) {
+    showDashboard();
+    loadHistory();
+  }
+})();
+</script>
+</body>
+</html>
