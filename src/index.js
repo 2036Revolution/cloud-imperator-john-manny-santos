@@ -3,7 +3,7 @@ const CODE_LENGTH = 4;
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const CODE_CAPACITY = CODE_ALPHABET.length ** CODE_LENGTH;
 const NEVER_EXPIRES = 253402300799;
-const BLOCKED_CODE_FRAGMENTS = ["FUCK", "CUNT", "SHIT", "PISS", "TWAT", "CRAP", "DICK", "COCK", "PORN", "ANAL", "RAPE", "FAG", "KYS", "ASS"];
+const BLOCKED_CODES = ["FUCK", "CUNT", "TWAT", "CRAP", "COCK", "PORN", "ANAL", "RAPE", "FAGS", "FAGG", "NIGG", "NIGS"];
 const REQUIRED_GROUP_ID = 10608653;
 const MEMBERSHIP_CACHE_SECONDS = 30 * 60;
 const TIMESTAMP_TOLERANCE_SECONDS = 120;
@@ -35,7 +35,7 @@ function makeCode() {
   crypto.getRandomValues(bytes);
   let code = "";
   for (const byte of bytes) code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
-  if (BLOCKED_CODE_FRAGMENTS.some(fragment => code.includes(fragment))) return null;
+  if (BLOCKED_CODES.includes(code)) return null;
   return code;
 }
 
@@ -201,7 +201,7 @@ async function saveBuild(request, env) {
 
   // Only recycle an old build when every usable short code is occupied.
   const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM builds").first();
-  if (Number(count?.total || 0) >= CODE_CAPACITY - BLOCKED_CODE_FRAGMENTS.length) {
+  if (Number(count?.total || 0) >= CODE_CAPACITY - BLOCKED_CODES.length) {
     const oldest = await env.DB.prepare(
       "SELECT code FROM builds ORDER BY last_accessed ASC, created_at ASC LIMIT 1"
     ).first();
