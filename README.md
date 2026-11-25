@@ -1,53 +1,51 @@
-(AI-GENERATED. TESTED AND THIS IS NOT AN ENCOURAGEMENT OF AI-SLOP! THANKS, BUILDVERSE!)
-
 # Independent F3X Import / Export
 
-A community project for storing F3X build data behind a small HTTP API. The source code lives in this GitHub repository; the API is designed to run on **Cloudflare Workers + D1**.
+A community project for importing and exporting F3X-compatible build data through a dedicated Cloudflare Worker and D1 database.
 
-> **Status: starter backend only.** This repository does not yet contain a finished Roblox/F3X plugin. The old RBXM files have not been safely verified as reusable source, so this project does not copy their code or claim official F3X endorsement.
+## Components
 
-## What is included
+- `src/index.js` — API for saving and retrieving JSON build payloads.
+- `schema.sql` — database schema for builds, membership cache, rate limits, nonces, and export cooldowns.
+- `wrangler.toml` — Worker and D1 binding configuration.
+- `IndependentF3XImportExport.rbxm` — combined Roblox Studio plugin based on the user-provided original import plugin, with an added Export action.
 
-- `src/index.js` — Cloudflare Worker API.
-- `schema.sql` — D1 database table.
-- `wrangler.toml` — Worker and D1 configuration template.
+The combined plugin keeps the original import serialization formats (V1/V2/V3) and uses the original V3 format for newly exported builds so that the original importer can read them. MeshParts are converted to Part + SpecialMesh for compatibility; some Roblox-only instance types and visual features outside the original serializer's supported set are not exported.
 
 ## API
 
-- `GET /` — health/status response.
-- `POST /api/builds` — save a JSON build and receive a short code.
-- `GET /api/builds/:code` — retrieve a saved build by code.
+- `GET /` — service status.
+- `POST /api/builds` — save a JSON build and receive a four-character code.
+- `GET /api/builds/:code` — retrieve a build by code.
 
-Saved builds expire after 30 days by default. The API rejects malformed JSON and payloads larger than 512 KiB.
+All API build operations require the plugin-supplied Roblox UserId, a fresh timestamp, a one-time nonce, and membership in Roblox group **10608653**. The server checks membership and caches the result for 30 minutes.
 
-## Free setup (when your Cloudflare account is ready)
+### Build storage and codes
 
-1. Create a Cloudflare D1 database named `f3x-builds`.
-2. Copy the database ID into `wrangler.toml` where it says `REPLACE_WITH_D1_DATABASE_ID`.
-3. In a terminal with Node.js and Wrangler installed, run:
+- Builds do not expire automatically. The original creation timestamp is retained in `created_at`.
+- `last_accessed` is updated when a build is retrieved.
+- Four-character codes use a 32-character alphabet (just over one million possible codes). A small explicit denylist prevents several obvious offensive codes from being assigned.
+- If every usable code is occupied, the least-recently-accessed build is recycled first. This is an emergency capacity policy, not normal cleanup.
+- Each build is limited to 512 KiB.
+- The database stores the build payload and creation/access timestamps.
 
-   ```sh
-   npx wrangler d1 execute f3x-builds --remote --file=./schema.sql
-   npx wrangler deploy
-   ```
+### Export abuse controls
 
-4. Wrangler will show the Worker URL, normally ending in `.workers.dev`.
+- The plugin disables its Export button for one second after a click.
+- The API independently enforces a one-second per-user export cooldown.
+- Repeated rapid export attempts trigger a 20-second server-side pause.
+- Additional limits are 12 authenticated requests per user per minute and 30 per source IP per minute.
+- Request nonces are one-use and expired nonce records are cleaned up.
 
-You can also create the D1 database and deploy from the Cloudflare dashboard. Do not publish database credentials or account API tokens.
+## Security limitations
 
-## Important security note
-
-This initial API is intentionally a small prototype. Anyone who discovers the public Worker URL can submit builds or retrieve a build if they know its code. Random codes make guessing harder, but they are **not user authentication**. Before using this for a public game, add abuse protection and decide who is allowed to upload, delete, and retrieve data. Never put a Cloudflare account token or database secret in a Roblox LocalScript or plugin.
-
-## Next step
-
-The Roblox plugin still needs to be connected to these endpoints. That requires inspecting and adapting verified plugin source; it is not included or claimed to be complete here.
+The API verifies that the submitted UserId belongs to the required group, but a UserId supplied by a client plugin is not cryptographic proof of identity. A modified client could forge the header. Timestamp freshness, nonces, group checks, and rate limits reduce casual abuse and replay, but they do not provide the same guarantee as a server-signed identity token. Do not put Cloudflare account tokens or database credentials in the plugin.
 
 ## Deployment status
 
-- The dedicated Cloudflare D1 database has been created and its schema applied.
-- The Worker `independent-f3x-api` has been uploaded with the D1 binding.
-- The Worker does not yet have a public `workers.dev` address. Choose and configure the account's workers.dev subdomain before publishing the API URL.
-- `index.html` is the first companion-page draft. GitHub Pages still needs to be enabled in the repository settings, and its API address must be filled in after the Worker URL is known.
+- Dedicated Cloudflare D1 database: created and migrated.
+- Worker: deployed with the D1 binding.
+- Public `workers.dev` API subdomain: not configured yet. The public website will remain on GitHub Pages; the Worker URL is only the plugin's API endpoint.
+- GitHub Pages: not enabled yet.
+- The combined RBXM currently contains an API URL placeholder. Replace it with the Worker API URL after the public API subdomain is selected.
 
-The website and Roblox plugin are separate pieces: this page currently retrieves a build as JSON; the Roblox F3X plugin integration is still being developed.
+This is an independent community project and is not affiliated with or endorsed by Roblox or the F3X creators.
