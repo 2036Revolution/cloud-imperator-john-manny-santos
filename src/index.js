@@ -1,7 +1,9 @@
 const MAX_BODY_BYTES = 512 * 1024;
-const CODE_LENGTH = 8;
+const CODE_LENGTH = 4;
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-const BUILD_TTL_SECONDS = 30 * 24 * 60 * 60;
+const CODE_CAPACITY = CODE_ALPHABET.length ** CODE_LENGTH;
+const NEVER_EXPIRES = 253402300799;
+const BLOCKED_CODE_FRAGMENTS = ["FUCK", "CUNT", "SHIT", "PISS", "TWAT", "CRAP", "DICK", "COCK", "PORN", "ANAL", "RAPE", "FAG", "KYS", "ASS"];
 const REQUIRED_GROUP_ID = 10608653;
 const MEMBERSHIP_CACHE_SECONDS = 30 * 60;
 const TIMESTAMP_TOLERANCE_SECONDS = 120;
@@ -33,6 +35,7 @@ function makeCode() {
   crypto.getRandomValues(bytes);
   let code = "";
   for (const byte of bytes) code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
+  if (BLOCKED_CODE_FRAGMENTS.some(fragment => code.includes(fragment))) return null;
   return code;
 }
 
@@ -141,9 +144,40 @@ async function authorize(request, env) {
   }
 }
 
+async function enforceExportCooldown(env, userId) {
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    "INSERT INTO export_guard (user_id, last_attempt_ms, rapid_count, blocked_until_ms) VALUES (?, ?, 0, 0) " +
+    "ON CONFLICT(user_id) DO UPDATE SET " +
+    "rapid_count = CASE WHEN excluded.last_attempt_ms - export_guard.last_attempt_ms < 5000 THEN export_guard.rapid_count + 1 ELSE 0 END, " +
+    "blocked_until_ms = CASE WHEN export_guard.blocked_until_ms > excluded.last_attempt_ms THEN export_guard.blocked_until_ms " +
+    "WHEN excluded.last_attempt_ms - export_guard.last_attempt_ms < 5000 AND export_guard.rapid_count >= 2 THEN excluded.last_attempt_ms + 20000 ELSE 0 END, " +
+    "last_attempt_ms = excluded.last_attempt_ms " +
+    "RETURNING last_attempt_ms, rapid_count, blocked_until_ms"
+  ).bind(userId, now).first();
+
+  if (Number(row?.blocked_until_ms || 0) > now) {
+    return { blocked: true, retryAfter: Math.ceil((Number(row.blocked_until_ms) - now) / 1000) };
+  }
+  const delta = now - Number(row?.last_attempt_ms || now);
+  // The first attempt is allowed. Repeated attempts inside the one-second window are rejected.
+  if (Number(row?.rapid_count || 0) > 0 && delta < 1000) {
+    return { blocked: false, cooldown: true, retryAfter: 1 };
+  }
+  return { blocked: false, cooldown: false };
+}
+
 async function saveBuild(request, env) {
   const auth = await authorize(request, env);
   if (auth.response) return auth.response;
+
+  const cooldown = await enforceExportCooldown(env, auth.userId);
+  if (cooldown.blocked) {
+    return json({ error: "Export paused because of repeated rapid requests. Please wait.", retryAfter: cooldown.retryAfter }, 429);
+  }
+  if (cooldown.cooldown) {
+    return json({ error: "Please wait one second before exporting again.", retryAfter: cooldown.retryAfter }, 429);
+  }
 
   let body;
   try {
@@ -155,13 +189,31 @@ async function saveBuild(request, env) {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 100; attempt++) {
     const code = makeCode();
+    if (!code) continue;
     const result = await env.DB.prepare(
-      "INSERT OR IGNORE INTO builds (code, payload, created_at, expires_at) VALUES (?, ?, ?, ?)"
-    ).bind(code, body, now, now + BUILD_TTL_SECONDS).run();
+      "INSERT OR IGNORE INTO builds (code, payload, created_at, expires_at, last_accessed) VALUES (?, ?, ?, ?, ?)"
+    ).bind(code, body, now, NEVER_EXPIRES, now).run();
     if (result.meta?.changes === 1) {
-      return json({ success: true, code, expiresAt: now + BUILD_TTL_SECONDS }, 201);
+      return json({ success: true, code, createdAt: now, expiresAt: null }, 201);
+    }
+  }
+
+  // Only recycle an old build when every usable short code is occupied.
+  const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM builds").first();
+  if (Number(count?.total || 0) >= CODE_CAPACITY - BLOCKED_CODE_FRAGMENTS.length) {
+    const oldest = await env.DB.prepare(
+      "SELECT code FROM builds ORDER BY last_accessed ASC, created_at ASC LIMIT 1"
+    ).first();
+    if (oldest?.code) {
+      await env.DB.prepare("DELETE FROM builds WHERE code = ?").bind(oldest.code).run();
+      const result = await env.DB.prepare(
+        "INSERT OR IGNORE INTO builds (code, payload, created_at, expires_at, last_accessed) VALUES (?, ?, ?, ?, ?)"
+      ).bind(oldest.code, body, now, NEVER_EXPIRES, now).run();
+      if (result.meta?.changes === 1) {
+        return json({ success: true, code: oldest.code, createdAt: now, expiresAt: null, recycled: true }, 201);
+      }
     }
   }
   return json({ error: "Could not allocate a build code. Please try again." }, 503);
@@ -170,14 +222,15 @@ async function saveBuild(request, env) {
 async function getBuild(code, request, env) {
   const auth = await authorize(request, env);
   if (auth.response) return auth.response;
-  if (!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(code)) {
+  if (!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$/.test(code)) {
     return json({ error: "Build code was not found." }, 404);
   }
-  const now = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare(
-    "SELECT payload FROM builds WHERE code = ? AND expires_at > ?"
-  ).bind(code, now).first();
-  if (!row) return json({ error: "Build code was not found or has expired." }, 404);
+    "SELECT payload FROM builds WHERE code = ?"
+  ).bind(code).first();
+  if (!row) return json({ error: "Build code was not found." }, 404);
+  await env.DB.prepare("UPDATE builds SET last_accessed = ? WHERE code = ?")
+    .bind(Math.floor(Date.now() / 1000), code).run();
   return new Response(row.payload, {
     status: 200,
     headers: {
